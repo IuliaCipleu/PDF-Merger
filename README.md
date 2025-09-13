@@ -12,16 +12,16 @@ PDF-Merger is a user-friendly application for merging, splitting, compressing, a
 
 ## Technology Stack
 
-- **Frontend:** React (located in `pdf-merge-frontend/`)
+- **Frontend:** React (located in `frontend/`)
 - **Backend:** Python (see `main.py`)
-- **PDF Processing:** PyPDF2 or similar library
+- **PDF Processing:** PyPDF2
 
 ## Getting Started
 
 ### 1. Clone the repository
 
 ```sh
-git clone https://github.com/yourusername/pdf-merger.git
+git clone https://github.com/IuliaCipleu/pdf-merger.git
 cd pdf-merger
 ```
 
@@ -71,7 +71,7 @@ The frontend will typically run at [http://localhost:3000](http://localhost:3000
 ## Folder Structure
 
 ```
-pdf-merge-frontend/   # React frontend
+frontend/   # React frontend
 main.py               # Python backend
 requirements.txt      # Python dependencies
 README.md             # Project documentation
