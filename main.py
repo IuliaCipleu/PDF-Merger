@@ -45,6 +45,27 @@ async def merge_pdfs(
     # Sorting logic
     if criteria == "name":
         temp_files.sort(key=lambda x: os.path.basename(x).lower())
+    elif criteria == "number":
+        def extract_number(filename):
+            import re
+            match = re.search(r"(\d+)", os.path.basename(filename))
+            return int(match.group(1)) if match else 0
+
+        temp_files.sort(key=extract_number)
+
+    elif criteria == "date":
+        def extract_date(filename):
+            import re, datetime
+            match = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(filename))
+            if match:
+                try:
+                    return datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
+                except ValueError:
+                    return datetime.datetime.min
+            return datetime.datetime.min
+
+        temp_files.sort(key=extract_date)
+        
     elif criteria == "regex" and regex:
         def extract_key(filename):
             match = re.search(regex, os.path.basename(filename))
