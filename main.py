@@ -1,10 +1,11 @@
 from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import os
 import shutil
 import uuid
+import io
 import re
 
 app = FastAPI()
@@ -121,51 +122,65 @@ async def compress_pdf(
     return FileResponse(output_path, filename="compressed.pdf", media_type="application/pdf")
 
 
+def parse_pages(spec: str, total_pages: int) -> list[int]:
+    # supports "1,3-5, 7"
+    pages = set()
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = re.match(r"^(\d+)\s*-\s*(\d+)$", part)
+        if m:
+            start = int(m.group(1))
+            end = int(m.group(2))
+            if start > end:
+                start, end = end, start
+            for p in range(start, end + 1):
+                if 1 <= p <= total_pages:
+                    pages.add(p - 1)  # zero-based
+        elif part.isdigit():
+            p = int(part)
+            if 1 <= p <= total_pages:
+                pages.add(p - 1)
+    return sorted(pages)
+
+
 @app.post("/split")
 async def split_pdf(
     background_tasks: BackgroundTasks,
     file: UploadFile=File(...),
     pages: str=Form("1")
 ):
-    # pages: comma-separated, e.g. "1,2"
+    # Save upload to a temp path
     input_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{file.filename}")
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    reader = PdfReader(input_path)
-    page_numbers = [int(p.strip()) - 1 for p in pages.split(",") if p.strip().isdigit()]
-
-    output_files = []
-    for idx, page_num in enumerate(page_numbers):
-        if 0 <= page_num < len(reader.pages):
-            writer = PdfWriter()
-            writer.add_page(reader.pages[page_num])
-            out_path = os.path.join(UPLOAD_DIR, f"split_{idx+1}_{uuid.uuid4()}.pdf")
-            with open(out_path, "wb") as f:
-                writer.write(f)
-            output_files.append(out_path)
-
-    # Remove the uploaded temp file
     try:
-        os.remove(input_path)
-    except FileNotFoundError:
-        pass
+        reader = PdfReader(input_path)
+        page_indices = parse_pages(pages, len(reader.pages))
 
-    if output_files:
-        # Keep the first, delete the rest immediately
-        keep = output_files[0]
-        for extra in output_files[1:]:
-            try:
-                os.remove(extra)
-            except FileNotFoundError:
-                pass
+        if not page_indices:
+            return {"error": "No valid pages selected."}
 
-        # Schedule deletion of the returned file after response is sent
-        background_tasks.add_task(remove_file, keep)
-        return FileResponse(keep, filename="split.pdf", media_type="application/pdf")
+        writer = PdfWriter()
+        for idx in page_indices:
+            writer.add_page(reader.pages[idx])
 
-    # No valid pages selected
-    return {"error": "No valid pages selected."}
+        # Write to memory and stream back
+        buf = io.BytesIO()
+        writer.write(buf)
+        buf.seek(0)
+
+        # stream response; no file path races, no background cleanup needed
+        headers = {"Content-Disposition": 'attachment; filename="split.pdf"'}
+        return StreamingResponse(buf, media_type="application/pdf", headers=headers)
+    finally:
+        # Always remove uploaded temp file
+        try:
+            os.remove(input_path)
+        except FileNotFoundError:
+            pass
 
 
 @app.post("/delete-pages")
