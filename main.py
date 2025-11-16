@@ -103,7 +103,7 @@ async def compress_pdf(
     output_path = os.path.join(UPLOAD_DIR, f"compressed_{uuid.uuid4()}.pdf")
     with open(input_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    gs_path = r"C:\Program Files\gs\gs10.05.1\bin\gswin64c.exe"
+    gs_path = r"C:\Program Files\gs\gs10.06.0\bin\gswin64c.exe"
     command = [
         gs_path,
         "-sDEVICE=pdfwrite",
