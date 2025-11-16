@@ -44,7 +44,7 @@ uvicorn main:app --reload
 Navigate to the frontend directory and install dependencies:
 
 ```sh
-cd pdf-merge-frontend
+cd frontend
 npm install
 ```
 
