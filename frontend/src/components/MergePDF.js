@@ -221,6 +221,7 @@ function MergePDF() {
                                         borderRadius: 6,
                                         padding: "4px 8px",
                                         cursor: "pointer",
+                                        color: "#900",
                                     }}
                                 >
                                     Remove
