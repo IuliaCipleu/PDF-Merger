@@ -8,6 +8,7 @@ function SplitPDF() {
     const [everyN, setEveryN] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [finalFileName, setFinalFileName] = useState('merged.pdf'); // Default file name
 
     const handleFileChange = (e) => {
         setFile(e.target.files?.[0] ?? null);
@@ -79,6 +80,19 @@ function SplitPDF() {
     return (
         <div style={{ maxWidth: 500, margin: '0 auto', padding: 24 }}>
             <h2>Split PDF</h2>
+            {/* Final file name input */}
+            <div style={{ marginBottom: 16 }}>
+                <label>
+                    Final file name:&nbsp;
+                    <input
+                        type="text"
+                        value={finalFileName}
+                        onChange={(e) => setFinalFileName(e.target.value)}
+                        placeholder="Enter final file name"
+                        style={{ padding: 8, borderRadius: 4, border: "1px solid #ddd", width: "100%" }}
+                    />
+                </label>
+            </div>
             <form onSubmit={handleSubmit}>
                 <div>
                     <label>

@@ -5,6 +5,7 @@ function CompressPDF() {
   const [file, setFile] = useState(null);
   const [quality, setQuality] = useState("screen");
   const [resultUrl, setResultUrl] = useState(null);
+  const [finalFileName, setFinalFileName] = useState('merged.pdf'); // Default file name
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -33,6 +34,19 @@ function CompressPDF() {
   return (
     <div style={{ padding: 40 }}>
       <h2>Compress PDF</h2>
+      {/* Final file name input */}
+            <div style={{ marginBottom: 16 }}>
+                <label>
+                    Final file name:&nbsp;
+                    <input
+                        type="text"
+                        value={finalFileName}
+                        onChange={(e) => setFinalFileName(e.target.value)}
+                        placeholder="Enter final file name"
+                        style={{ padding: 8, borderRadius: 4, border: "1px solid #ddd", width: "100%" }}
+                    />
+                </label>
+            </div>
       <form onSubmit={handleSubmit}>
         <input
           type="file"
@@ -57,7 +71,7 @@ function CompressPDF() {
       </form>
       {resultUrl && (
         <div style={{ marginTop: 20 }}>
-          <a href={resultUrl} download="compressed.pdf">
+          <a href={resultUrl} download={finalFileName}>
             Download Compressed PDF
           </a>
         </div>

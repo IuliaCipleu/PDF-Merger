@@ -5,6 +5,7 @@ function DeletePagePDF() {
   const [file, setFile] = useState(null);
   const [pages, setPages] = useState("");
   const [resultUrl, setResultUrl] = useState(null);
+  const [finalFileName, setFinalFileName] = useState('merged.pdf'); // Default file name
 
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
@@ -52,13 +53,26 @@ function DeletePagePDF() {
             />
           </label>
         </div>
+        {/* Final file name input */}
+            <div style={{ marginBottom: 16 }}>
+                <label>
+                    Final file name:&nbsp;
+                    <input
+                        type="text"
+                        value={finalFileName}
+                        onChange={(e) => setFinalFileName(e.target.value)}
+                        placeholder="Enter final file name"
+                        style={{ padding: 8, borderRadius: 4, border: "1px solid #ddd", width: "100%" }}
+                    />
+                </label>
+            </div>
         <button type="submit" disabled={!file || !pages}>
           Delete Pages
         </button>
       </form>
       {resultUrl && (
         <div style={{ marginTop: 20 }}>
-          <a href={resultUrl} download="deleted_pages.pdf">
+          <a href={resultUrl} download={finalFileName}>
             Download PDF without selected pages
           </a>
         </div>

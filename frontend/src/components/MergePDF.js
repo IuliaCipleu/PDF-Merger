@@ -6,6 +6,7 @@ function MergePDF() {
     const [mergedUrl, setMergedUrl] = useState(null);
     const [criteria, setCriteria] = useState("chronology"); // chronology | name | regex | custom
     const [regex, setRegex] = useState("");
+    const [finalFileName, setFinalFileName] = useState('merged.pdf'); // Default file name
     const dragFromIndex = useRef(null);
 
     useEffect(() => {
@@ -232,13 +233,27 @@ function MergePDF() {
                 </div>
             )}
 
+            {/* Final file name input */}
+            <div style={{ marginBottom: 16 }}>
+                <label>
+                    Final file name:&nbsp;
+                    <input
+                        type="text"
+                        value={finalFileName}
+                        onChange={(e) => setFinalFileName(e.target.value)}
+                        placeholder="Enter final file name"
+                        style={{ padding: 8, borderRadius: 4, border: "1px solid #ddd", width: "100%" }}
+                    />
+                </label>
+            </div>
+
             <button onClick={handleMerge} disabled={disableMerge} style={{ padding: "10px 16px", borderRadius: 8 }}>
                 Merge PDFs
             </button>
 
             {mergedUrl && (
                 <div style={{ marginTop: 16 }}>
-                    <a href={mergedUrl} download="merged.pdf">
+                    <a href={mergedUrl} download={finalFileName}>
                         Download merged PDF
                     </a>
                 </div>
