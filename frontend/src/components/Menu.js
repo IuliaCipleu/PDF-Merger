@@ -7,6 +7,7 @@ function Menu({ onSelect, selected }) {
     { key: "split", label: "Split PDF" },
     { key: "compress", label: "Compress PDF" },
     { key: "delete", label: "Delete PDF" },
+    { key: "rotate", label: "Rotate PDF" },
   ];
 
   return (

@@ -205,3 +205,35 @@ async def delete_pages(
     os.remove(input_path)
     background_tasks.add_task(remove_file, output_path)
     return FileResponse(output_path, filename="deleted_pages.pdf", media_type="application/pdf")
+
+
+@app.post("/rotate")
+async def rotate_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    angle: int = Form(90)
+):
+    # Rotate all pages by the specified angle (90, 180, 270)
+    input_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{file.filename}")
+    output_path = os.path.join(UPLOAD_DIR, f"rotated_{uuid.uuid4()}.pdf")
+    with open(input_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    try:
+        reader = PdfReader(input_path)
+        writer = PdfWriter()
+        
+        for page in reader.pages:
+            page.rotate(angle)
+            writer.add_page(page)
+        
+        with open(output_path, "wb") as f:
+            writer.write(f)
+        
+        os.remove(input_path)
+        background_tasks.add_task(remove_file, output_path)
+        return FileResponse(output_path, filename="rotated.pdf", media_type="application/pdf")
+    except Exception as e:
+        if os.path.exists(input_path):
+            os.remove(input_path)
+        raise e
