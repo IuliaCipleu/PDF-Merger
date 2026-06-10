@@ -1,12 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
+const ACCEPTED_FILE_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
+const ACCEPTED_FILE_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
+const ACCEPT_ATTRIBUTE = "application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg";
+
+function isSupportedFile(file) {
+    const fileName = file.name.toLowerCase();
+    return ACCEPTED_FILE_TYPES.has(file.type) ||
+        ACCEPTED_FILE_EXTENSIONS.some((extension) => fileName.endsWith(extension));
+}
+
 function MergePDF() {
     const [files, setFiles] = useState([]);          // Array<File>
     const [mergedUrl, setMergedUrl] = useState(null);
     const [criteria, setCriteria] = useState("chronology"); // chronology | name | regex | custom
     const [regex, setRegex] = useState("");
     const [finalFileName, setFinalFileName] = useState('merged.pdf'); // Default file name
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
     const dragFromIndex = useRef(null);
 
     useEffect(() => {
@@ -15,29 +27,41 @@ function MergePDF() {
         };
     }, [mergedUrl]);
 
-    const handleFiles = (e) => {
-        const selected = Array.from(e.target.files || []);
-        setFiles(selected);
+    const updateFiles = (fileList) => {
+        const selected = Array.from(fileList || []);
+        const supported = selected.filter(isSupportedFile);
+        const rejectedCount = selected.length - supported.length;
+
+        setFiles(supported);
+        setError(rejectedCount > 0
+            ? `${rejectedCount} unsupported file${rejectedCount === 1 ? "" : "s"} ignored. Use PDF, PNG, JPG, or JPEG files.`
+            : ""
+        );
         if (mergedUrl) {
             URL.revokeObjectURL(mergedUrl);
             setMergedUrl(null);
         }
+    };
+
+    const handleFiles = (e) => {
+        updateFiles(e.target.files);
     };
 
     const handleDropZoneDrop = (e) => {
         e.preventDefault();
-        const dropped = Array.from(e.dataTransfer.files || []);
-        setFiles(dropped);
-        if (mergedUrl) {
-            URL.revokeObjectURL(mergedUrl);
-            setMergedUrl(null);
-        }
+        updateFiles(e.dataTransfer.files);
     };
 
     const handleDropZoneDragOver = (e) => e.preventDefault();
 
-    const handleCriteriaChange = (e) => setCriteria(e.target.value);
-    const handleRegexChange = (e) => setRegex(e.target.value);
+    const handleCriteriaChange = (e) => {
+        setCriteria(e.target.value);
+        setError("");
+    };
+    const handleRegexChange = (e) => {
+        setRegex(e.target.value);
+        setError("");
+    };
 
     // --- Reordering logic (native DnD on the list) ---
     const onItemDragStart = (index) => (e) => {
@@ -69,6 +93,7 @@ function MergePDF() {
 
     const removeAt = (index) => {
         setFiles((prev) => prev.filter((_, i) => i !== index));
+        setError("");
     };
 
     const handleMerge = async () => {
@@ -83,22 +108,46 @@ function MergePDF() {
             formData.append("regex", regex);
         }
 
-        const response = await axios.post("http://localhost:8000/merge", formData, {
-            responseType: "blob",
-            headers: { "Content-Type": "multipart/form-data" },
-        });
+        try {
+            setLoading(true);
+            setError("");
 
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        if (mergedUrl) URL.revokeObjectURL(mergedUrl);
-        setMergedUrl(url);
+            const response = await axios.post("http://localhost:8000/merge", formData, {
+                responseType: "blob",
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            if (mergedUrl) URL.revokeObjectURL(mergedUrl);
+            setMergedUrl(url);
+        } catch (err) {
+            console.error(err);
+            let detail = "";
+            const responseData = err.response?.data;
+
+            if (responseData instanceof Blob) {
+                const text = await responseData.text();
+                try {
+                    detail = JSON.parse(text).detail || text;
+                } catch {
+                    detail = text;
+                }
+            } else if (responseData?.detail) {
+                detail = responseData.detail;
+            }
+
+            setError(detail || "Failed to create the PDF. Please check the selected files and try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const disableMerge =
-        files.length === 0 || (criteria === "regex" && !regex.trim());
+        loading || files.length === 0 || (criteria === "regex" && !regex.trim());
 
     return (
         <div style={{ padding: 40, maxWidth: 720, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-            <h2 style={{ marginTop: 0 }}>Merge PDFs</h2>
+            <h2 style={{ marginTop: 0 }}>Merge PDFs & Images</h2>
 
             {/* Drop zone */}
             <div
@@ -113,12 +162,12 @@ function MergePDF() {
                     background: "#fafafa",
                 }}
             >
-                Drag & drop PDF files here
+                Drag & drop PDF, PNG, JPG, or JPEG files here
                 <br />
                 <input
                     type="file"
                     multiple
-                    accept="application/pdf"
+                    accept={ACCEPT_ATTRIBUTE}
                     onChange={handleFiles}
                     style={{ marginTop: 16 }}
                 />
@@ -248,13 +297,19 @@ function MergePDF() {
             </div>
 
             <button onClick={handleMerge} disabled={disableMerge} style={{ padding: "10px 16px", borderRadius: 8 }}>
-                Merge PDFs
+                {loading ? "Creating..." : "Create PDF"}
             </button>
+
+            {error && (
+                <div style={{ marginTop: 12, color: "#b00020" }}>
+                    {error}
+                </div>
+            )}
 
             {mergedUrl && (
                 <div style={{ marginTop: 16 }}>
                     <a href={mergedUrl} download={finalFileName}>
-                        Download merged PDF
+                        Download PDF
                     </a>
                 </div>
             )}

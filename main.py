@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
@@ -21,12 +21,65 @@ app.add_middleware(
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+PDF_EXTENSIONS = {".pdf"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg"}
+
 
 def remove_file(path: str):
     try:
         os.remove(path)
     except Exception as e:
         print(f"Error deleting file {path}: {e}")
+
+
+def get_upload_kind(file: UploadFile) -> str:
+    filename = file.filename or ""
+    extension = os.path.splitext(filename)[1].lower()
+    content_type = (file.content_type or "").lower()
+
+    if extension in PDF_EXTENSIONS or content_type == "application/pdf":
+        return "pdf"
+    if extension in IMAGE_EXTENSIONS or content_type in IMAGE_CONTENT_TYPES:
+        return "image"
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unsupported file type for {filename or 'upload'}. Use PDF, PNG, JPG, or JPEG files.",
+    )
+
+
+def image_to_pdf(image_path: str, output_path: str):
+    try:
+        from PIL import Image, UnidentifiedImageError
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Image conversion requires Pillow. Run: pip install -r requirements.txt",
+        ) from exc
+
+    try:
+        with Image.open(image_path) as image:
+            image.load()
+
+            has_alpha = image.mode in ("RGBA", "LA") or (
+                image.mode == "P" and "transparency" in image.info
+            )
+            if has_alpha:
+                rgba = image.convert("RGBA")
+                pdf_image = Image.new("RGB", rgba.size, "white")
+                pdf_image.paste(rgba, mask=rgba.getchannel("A"))
+                rgba.close()
+            else:
+                pdf_image = image.convert("RGB")
+
+            pdf_image.save(output_path, "PDF", resolution=100.0)
+            pdf_image.close()
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not read image file {os.path.basename(image_path)}.",
+        ) from exc
 
 
 @app.post("/merge")
@@ -36,58 +89,103 @@ async def merge_pdfs(
     criteria: str = Form("chronology"),
     regex: str = Form(None)
 ):
-    temp_files = []
-    for file in files:
-        temp_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{file.filename}")
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        temp_files.append(temp_path)
+    temp_paths = []
+    upload_items = []
+    try:
+        for file in files:
+            kind = get_upload_kind(file)
+            original_filename = os.path.basename(file.filename or "upload")
+            temp_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4()}_{original_filename}")
+            temp_paths.append(temp_path)
+            with open(temp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            upload_items.append({
+                "path": temp_path,
+                "filename": original_filename,
+                "kind": kind,
+            })
+    except Exception:
+        for temp in temp_paths:
+            remove_file(temp)
+        raise
 
-    # Sorting logic
-    if criteria == "name":
-        temp_files.sort(key=lambda x: os.path.basename(x).lower())
-    elif criteria == "number":
-        def extract_number(filename):
-            import re
-            match = re.search(r"(\d+)", os.path.basename(filename))
-            return int(match.group(1)) if match else 0
+    try:
+        # Sorting logic
+        if criteria == "name":
+            upload_items.sort(key=lambda item: item["filename"].lower())
+        elif criteria == "number":
+            def extract_number(filename):
+                import re
+                match = re.search(r"(\d+)", filename)
+                return int(match.group(1)) if match else 0
 
-        temp_files.sort(key=extract_number)
+            upload_items.sort(key=lambda item: extract_number(item["filename"]))
 
-    elif criteria == "date":
-        def extract_date(filename):
-            import re, datetime
-            match = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(filename))
-            if match:
+        elif criteria == "date":
+            def extract_date(filename):
+                import re, datetime
+                match = re.search(r"(\d{4}-\d{2}-\d{2})", filename)
+                if match:
+                    try:
+                        return datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
+                    except ValueError:
+                        return datetime.datetime.min
+                return datetime.datetime.min
+
+            upload_items.sort(key=lambda item: extract_date(item["filename"]))
+            
+        elif criteria == "regex" and regex:
+            try:
+                pattern = re.compile(regex)
+            except re.error as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid regex: {exc}") from exc
+
+            def extract_key(filename):
+                match = pattern.search(filename)
+                if not match:
+                    return (1, filename.lower())
+
+                value = match.group(1) if match.groups() else match.group(0)
                 try:
-                    return datetime.datetime.strptime(match.group(1), "%Y-%m-%d")
+                    return (0, int(value))
                 except ValueError:
-                    return datetime.datetime.min
-            return datetime.datetime.min
-
-        temp_files.sort(key=extract_date)
-        
-    elif criteria == "regex" and regex:
-        def extract_key(filename):
-            match = re.search(regex, os.path.basename(filename))
-            if match:
-                # Try to convert first group to int, else use as string
-                try:
-                    return int(match.group(1))
-                except Exception:
-                    return match.group(1)
-            return os.path.basename(filename)
-        temp_files.sort(key=extract_key)
-    # else: chronology = upload order (do nothing)
+                    return (0, value.lower())
+            upload_items.sort(key=lambda item: extract_key(item["filename"]))
+        # else: chronology = upload order (do nothing)
+    except Exception:
+        for temp in temp_paths:
+            remove_file(temp)
+        raise
 
     merger = PdfMerger()
-    for path in temp_files:
-        merger.append(path)
-    output_path = os.path.join(UPLOAD_DIR, f"merged_{uuid.uuid4()}.pdf")
-    merger.write(output_path)
-    merger.close()
-    for temp in temp_files:
-        os.remove(temp)
+    output_path = None
+    try:
+        for item in upload_items:
+            append_path = item["path"]
+            if item["kind"] == "image":
+                append_path = os.path.join(UPLOAD_DIR, f"image_{uuid.uuid4()}.pdf")
+                image_to_pdf(item["path"], append_path)
+                temp_paths.append(append_path)
+
+            try:
+                merger.append(append_path)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Could not merge {item['filename']}. Make sure it is a valid PDF, PNG, JPG, or JPEG file.",
+                ) from exc
+
+        output_path = os.path.join(UPLOAD_DIR, f"merged_{uuid.uuid4()}.pdf")
+        merger.write(output_path)
+    except Exception:
+        if output_path and os.path.exists(output_path):
+            remove_file(output_path)
+        raise
+    finally:
+        merger.close()
+        for temp in temp_paths:
+            remove_file(temp)
+
     background_tasks.add_task(remove_file, output_path)
     return FileResponse(output_path, filename="merged.pdf", media_type="application/pdf")
 
