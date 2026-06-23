@@ -4,7 +4,7 @@ PDF-Merger is a user-friendly application for merging, splitting, compressing, a
 
 ## Features
 
-- **Merge PDFs:** Combine multiple PDF files into one.
+- **Merge files to PDF:** Combine PDF, PNG, JPG/JPEG, DOC/DOCX, and PPT/PPTX files into one PDF.
 - **Split PDFs:** Extract selected pages into a new PDF.
 - **Compress PDFs:** Reduce PDF file size for easier sharing.
 - **Delete Pages:** Remove unwanted pages from your PDFs.
@@ -14,7 +14,7 @@ PDF-Merger is a user-friendly application for merging, splitting, compressing, a
 
 - **Frontend:** React (located in `frontend/`)
 - **Backend:** Python (see `main.py`)
-- **PDF Processing:** PyPDF2
+- **PDF Processing:** PyPDF2, Pillow, and LibreOffice for Word/PowerPoint conversion
 
 ## Getting Started
 
@@ -32,6 +32,9 @@ Install Python dependencies:
 ```sh
 pip install -r requirements.txt
 ```
+
+For DOC/DOCX/PPT/PPTX uploads, install LibreOffice and make sure `soffice` is on your PATH.
+Alternatively, set `LIBREOFFICE_PATH` to the full path of `soffice.exe`.
 
 Run the backend server:
 

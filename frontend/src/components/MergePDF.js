@@ -1,9 +1,33 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
-const ACCEPTED_FILE_TYPES = new Set(["application/pdf", "image/png", "image/jpeg"]);
-const ACCEPTED_FILE_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
-const ACCEPT_ATTRIBUTE = "application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg";
+const ACCEPTED_FILE_TYPES = new Set([
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "application/msword",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+]);
+const ACCEPTED_FILE_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".ppt", ".pptx"];
+const ACCEPT_ATTRIBUTE = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "application/msword",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".pdf",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+].join(",");
 
 function isSupportedFile(file) {
     const fileName = file.name.toLowerCase();
@@ -34,7 +58,7 @@ function MergePDF() {
 
         setFiles(supported);
         setError(rejectedCount > 0
-            ? `${rejectedCount} unsupported file${rejectedCount === 1 ? "" : "s"} ignored. Use PDF, PNG, JPG, or JPEG files.`
+            ? `${rejectedCount} unsupported file${rejectedCount === 1 ? "" : "s"} ignored. Use PDF, PNG, JPG, JPEG, DOC, DOCX, PPT, or PPTX files.`
             : ""
         );
         if (mergedUrl) {
@@ -147,7 +171,7 @@ function MergePDF() {
 
     return (
         <div style={{ padding: 40, maxWidth: 720, margin: "0 auto", fontFamily: "system-ui, sans-serif" }}>
-            <h2 style={{ marginTop: 0 }}>Merge PDFs & Images</h2>
+            <h2 style={{ marginTop: 0 }}>Merge Files to PDF</h2>
 
             {/* Drop zone */}
             <div
@@ -162,7 +186,7 @@ function MergePDF() {
                     background: "#fafafa",
                 }}
             >
-                Drag & drop PDF, PNG, JPG, or JPEG files here
+                Drag & drop PDF, PNG, JPG, JPEG, DOC, DOCX, PPT, or PPTX files here
                 <br />
                 <input
                     type="file"

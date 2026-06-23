@@ -4,9 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import os
 import shutil
+import subprocess
 import uuid
 import io
 import re
+from pathlib import Path
 
 app = FastAPI()
 
@@ -24,6 +26,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 PDF_EXTENSIONS = {".pdf"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 IMAGE_CONTENT_TYPES = {"image/png", "image/jpeg"}
+OFFICE_EXTENSIONS = {".doc", ".docx", ".ppt", ".pptx"}
+OFFICE_CONTENT_TYPES = {
+    "application/msword",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
 
 
 def remove_file(path: str):
@@ -42,10 +51,12 @@ def get_upload_kind(file: UploadFile) -> str:
         return "pdf"
     if extension in IMAGE_EXTENSIONS or content_type in IMAGE_CONTENT_TYPES:
         return "image"
+    if extension in OFFICE_EXTENSIONS or content_type in OFFICE_CONTENT_TYPES:
+        return "office"
 
     raise HTTPException(
         status_code=400,
-        detail=f"Unsupported file type for {filename or 'upload'}. Use PDF, PNG, JPG, or JPEG files.",
+        detail=f"Unsupported file type for {filename or 'upload'}. Use PDF, PNG, JPG, JPEG, DOC, DOCX, PPT, or PPTX files.",
     )
 
 
@@ -80,6 +91,75 @@ def image_to_pdf(image_path: str, output_path: str):
             status_code=400,
             detail=f"Could not read image file {os.path.basename(image_path)}.",
         ) from exc
+
+
+def find_soffice_path() -> str | None:
+    candidates = [
+        os.environ.get("LIBREOFFICE_PATH"),
+        shutil.which("soffice"),
+        shutil.which("libreoffice"),
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ]
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return None
+
+
+def office_to_pdf(input_path: str, output_dir: str) -> str:
+    soffice_path = find_soffice_path()
+    if not soffice_path:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "DOC/PPT conversion requires LibreOffice. Install LibreOffice, "
+                "or set LIBREOFFICE_PATH to soffice.exe."
+            ),
+        )
+
+    profile_dir = os.path.abspath(os.path.join(UPLOAD_DIR, f"lo_profile_{uuid.uuid4()}"))
+    os.makedirs(profile_dir, exist_ok=True)
+
+    try:
+        command = [
+            soffice_path,
+            "--headless",
+            f"-env:UserInstallation={Path(profile_dir).as_uri()}",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            os.path.abspath(output_dir),
+            os.path.abspath(input_path),
+        ]
+        result = subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+
+        output_pdf = os.path.join(
+            output_dir,
+            f"{os.path.splitext(os.path.basename(input_path))[0]}.pdf",
+        )
+        if result.returncode != 0 or not os.path.exists(output_pdf):
+            message = (result.stderr or result.stdout or "LibreOffice did not create a PDF.").strip()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to convert {os.path.basename(input_path)} to PDF: {message}",
+            )
+
+        return output_pdf
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Timed out while converting {os.path.basename(input_path)} to PDF.",
+        ) from exc
+    finally:
+        shutil.rmtree(profile_dir, ignore_errors=True)
 
 
 @app.post("/merge")
@@ -166,13 +246,16 @@ async def merge_pdfs(
                 append_path = os.path.join(UPLOAD_DIR, f"image_{uuid.uuid4()}.pdf")
                 image_to_pdf(item["path"], append_path)
                 temp_paths.append(append_path)
+            elif item["kind"] == "office":
+                append_path = office_to_pdf(item["path"], UPLOAD_DIR)
+                temp_paths.append(append_path)
 
             try:
                 merger.append(append_path)
             except Exception as exc:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Could not merge {item['filename']}. Make sure it is a valid PDF, PNG, JPG, or JPEG file.",
+                    detail=f"Could not merge {item['filename']}. Make sure it is a valid PDF, image, Word, or PowerPoint file.",
                 ) from exc
 
         output_path = os.path.join(UPLOAD_DIR, f"merged_{uuid.uuid4()}.pdf")
